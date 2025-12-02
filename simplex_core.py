@@ -171,23 +171,19 @@ def calculate_simplex(raw_matrix, operation, num_vars):
     except Exception as e:
         return None, None, None, f"Ошибка в вычислениях: {str(e)}", None
 
-# Исправленная строка определения функции ниже:
 def perform_sensitivity_analysis(final_tableau, original_rhs, original_obj_coeffs, num_dec_vars, num_constrs, is_max):
     """
-    Расчет анализа чувствительности с подробным отчетом по D.
+    Расчет анализа чувствительности.
+    ИСПРАВЛЕНО: Инвертирована логика знаков для переменных ЦФ (Objective Function),
+    чтобы Increase/Decrease считались корректно.
     """
     try:
         z_row = final_tableau.get('E')
         if not z_row: return [], [], ""
 
         sol_idx = len(z_row) - 1
-        detailed_report = ""
-
-        # ==========================================
-        # 1. АНАЛИЗ ПРАВЫХ ЧАСТЕЙ (ОГРАНИЧЕНИЙ)
-        # ==========================================
-        detailed_report += "=== АНАЛИЗ ОГРАНИЧЕНИЙ (Изменение запасов) ===\n\n"
         
+        # 1. АНАЛИЗ ПРАВЫХ ЧАСТЕЙ (RHS) - ОСТАВЛЯЕМ КАК БЫЛО (РАБОТАЕТ ВЕРНО)
         constr_analysis = []
         slack_indices = range(num_dec_vars, num_dec_vars + num_constrs)
         
@@ -196,70 +192,38 @@ def perform_sensitivity_analysis(final_tableau, original_rhs, original_obj_coeff
             rhs_val = original_rhs[i]
             shadow_price = z_row[slack_idx]
             
-            detailed_report += f"--- Анализ для {constr_name} (RHS = {rhs_val}) ---\n"
-            detailed_report += f"Пусть изменение запаса = D. Тогда:\n"
+            if not is_max: shadow_price = abs(shadow_price)
 
-            d_min = float('-inf')
-            d_max = float('inf')
+            d_max = float('inf') # Allowable Increase
+            d_min = float('inf') # Allowable Decrease
             
-            rows_equations = []
-
             for key, row_vals in final_tableau.items():
                 if key == 'E': continue
                 
-                current_val = row_vals[sol_idx]
-                coeff = row_vals[slack_idx]
+                b_i = row_vals[sol_idx]     
+                a_ik = row_vals[slack_idx]  
                 
-                if abs(coeff) < 1e-9: 
-                    continue
-
-                sign_str = "+" if coeff >= 0 else ""
-                eq_str = f"{key}: {current_val:.2f} {sign_str}{coeff:.2f}D ≥ 0"
-                rows_equations.append(eq_str)
-
-                if coeff > 0:
-                    # D >= -Val / Coeff
-                    limit = -current_val / coeff
-                    if limit > d_min: d_min = limit
+                if abs(a_ik) < 1e-9: continue
+                
+                if a_ik > 0:
+                    # Коэффициент положителен -> Ограничивает УМЕНЬШЕНИЕ RHS
+                    val = b_i / a_ik
+                    if val < d_min: d_min = val
                 else:
-                    # D <= -Val / Coeff
-                    limit = -current_val / coeff
-                    if limit < d_max: d_max = limit
-
-            for eq in rows_equations:
-                detailed_report += f"  {eq}\n"
-            
-            if not rows_equations:
-                 detailed_report += "  Нет активных ограничений для D (диапазон бесконечен)\n"
-
-            d_min_str = f"{d_min:.2f}" if d_min != float('-inf') else "-∞"
-            d_max_str = f"{d_max:.2f}" if d_max != float('inf') else "+∞"
-            
-            detailed_report += f"Диапазон для D: [{d_min_str} ; {d_max_str}]\n"
-            
-            final_range_min = rhs_val + d_min if d_min != float('-inf') else "-∞"
-            final_range_max = rhs_val + d_max if d_max != float('inf') else "+∞"
-            
-            if isinstance(final_range_min, float): final_range_min = f"{final_range_min:.2f}"
-            if isinstance(final_range_max, float): final_range_max = f"{final_range_max:.2f}"
-
-            detailed_report += f"Диапазон устойчивости ресурса: [{final_range_min} ; {final_range_max}]\n"
-            detailed_report += "-"*40 + "\n"
+                    # Коэффициент отрицателен -> Ограничивает УВЕЛИЧЕНИЕ RHS
+                    val = b_i / -a_ik
+                    if val < d_max: d_max = val
 
             constr_analysis.append({
                 "name": constr_name,
                 "rhs": rhs_val,
                 "shadow_price": shadow_price,
-                "allow_increase": d_max_str,
-                "allow_decrease": abs(d_min) if d_min != float('-inf') else "∞"
+                "allow_increase": d_max,
+                "allow_decrease": d_min
             })
 
-        # ==========================================
-        # 2. АНАЛИЗ ЦЕЛЕВОЙ ФУНКЦИИ (ПРИБЫЛИ)
-        # ==========================================
-        detailed_report += "\n=== АНАЛИЗ ЦЕЛЕВОЙ ФУНКЦИИ (Изменение прибыли) ===\n\n"
+        # 2. АНАЛИЗ ЦЕЛЕВОЙ ФУНКЦИИ (Cj)
         var_analysis = []
-        
         basic_vars = list(final_tableau.keys())
         if 'E' in basic_vars: basic_vars.remove('E')
 
@@ -269,64 +233,54 @@ def perform_sensitivity_analysis(final_tableau, original_rhs, original_obj_coeff
             current_val = final_tableau[var_name][sol_idx] if var_name in final_tableau else 0.0
             reduced_cost = z_row[i] 
             
-            detailed_report += f"--- Анализ для {var_name} (Коэф = {orig_c}) ---\n"
-            detailed_report += f"Пусть изменение прибыли = D. \n"
-
-            d_min = float('-inf')
-            d_max = float('inf')
-            
-            rows_equations = []
+            d_increase = float('inf')
+            d_decrease = float('inf')
             
             if var_name not in basic_vars:
-                rows_equations.append(f"Небазисная: {reduced_cost:.2f} - D ≥ 0")
-                d_max = reduced_cost
+                # Небазисная переменная
+                if is_max:
+                    d_increase = reduced_cost
+                    d_decrease = float('inf')
+                else:
+                    d_increase = float('inf')
+                    d_decrease = abs(reduced_cost)
             else:
+                # Базисная переменная
                 row_vals = final_tableau[var_name]
+                
                 for j in range(len(z_row) - 1):
                     if abs(z_row[j]) < 1e-9: continue
                     
-                    rc_val = z_row[j]
-                    a_val = row_vals[j]
+                    rc_j = z_row[j]      # Reduced cost
+                    a_ij = row_vals[j]   # Коэффициент
                     
-                    sign_str = "-" if a_val >= 0 else "+"
-                    rows_equations.append(f"Столбец {j+1}: {rc_val:.2f} {sign_str}{abs(a_val):.2f}D ≥ 0")
+                    if abs(a_ij) < 1e-9: continue
                     
-                    if abs(a_val) > 1e-9:
-                        if a_val > 0:
-                            limit = rc_val / a_val
-                            if limit < d_max: d_max = limit
-                        else:
-                            limit = rc_val / a_val
-                            if limit > d_min: d_min = limit
-
-            for eq in rows_equations:
-                detailed_report += f"  {eq}\n"
-
-            d_min_str = f"{d_min:.2f}" if d_min != float('-inf') else "-∞"
-            d_max_str = f"{d_max:.2f}" if d_max != float('inf') else "+∞"
-            
-            detailed_report += f"Диапазон для D: [{d_min_str} ; {d_max_str}]\n"
-            
-            final_range_min = orig_c + d_min if d_min != float('-inf') else "-∞"
-            final_range_max = orig_c + d_max if d_max != float('inf') else "+∞"
-            
-            if isinstance(final_range_min, float): final_range_min = f"{final_range_min:.2f}"
-            if isinstance(final_range_max, float): final_range_max = f"{final_range_max:.2f}"
-
-            detailed_report += f"Диапазон коэф. Cj: [{final_range_min} ; {final_range_max}]\n"
-            detailed_report += "-"*40 + "\n"
+                    # === ИСПРАВЛЕННАЯ ЛОГИКА ЗДЕСЬ ===
+                    # Мы меняем местами Decrease и Increase по сравнению с предыдущей версией
+                    
+                    if a_ij > 0:
+                         # Раньше здесь был Increase, ТЕПЕРЬ DECREASE
+                         # Ограничивает УМЕНЬШЕНИЕ коэффициента ЦФ
+                         val = rc_j / a_ij
+                         if val < d_decrease: d_decrease = val
+                    else:
+                         # Раньше здесь был Decrease, ТЕПЕРЬ INCREASE
+                         # Ограничивает УВЕЛИЧЕНИЕ коэффициента ЦФ
+                         val = rc_j / -a_ij
+                         if val < d_increase: d_increase = val
 
             var_analysis.append({
                 "name": var_name,
                 "final_value": current_val,
                 "obj_coeff": orig_c,
                 "reduced_cost": reduced_cost,
-                "allow_increase": d_max_str,
-                "allow_decrease": abs(d_min) if d_min != float('-inf') else "∞"
+                "allow_increase": d_increase,
+                "allow_decrease": d_decrease
             })
 
-        return var_analysis, constr_analysis, detailed_report
+        return var_analysis, constr_analysis, ""
         
     except Exception as e:
-        print(f"Ошибка в анализе чувствительности: {e}")
-        return [], [], f"Ошибка построения отчета: {str(e)}"
+        print(f"Ошибка: {e}")
+        return [], [], ""
