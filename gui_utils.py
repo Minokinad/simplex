@@ -152,7 +152,7 @@ def plot_constraints(canvas, constraint_table, optimal_vars, obj_coeffs=None):
                 mid_x = maxx * 0.5
                 mid_y = (z_val - c1 * mid_x) / c2
                 if 0 <= mid_y <= maxy * 1.2:
-                    ax.text(mid_x, mid_y, 'Z(max)', color=COLOR_Z, fontsize=9, fontweight='bold', backgroundcolor='white')
+                    ax.text(mid_x, mid_y, 'E(max)', color=COLOR_Z, fontsize=9, fontweight='bold', backgroundcolor='white')
             elif abs(c1) > 1e-5:
                 # Вертикальная линия Z
                 target_x = z_val / c1
