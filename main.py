@@ -14,7 +14,7 @@ import gui_utils
 
 # --- STYLESHEET (Apple Style) ---
 STYLESHEET = """
-/* Основной фон приложения - светло-серый */
+/* Основной фон приложения */
 QMainWindow, QScrollArea {
     background-color: #F5F5F7;
 }
@@ -24,11 +24,11 @@ QWidget {
     color: #1D1D1F;
 }
 
-/* Карточки (белые блоки) */
+/* Карточки - ТЕПЕРЬ БЕЗ ТЕНИ, НО С ЧЕТКОЙ ГРАНИЦЕЙ */
 QFrame.Card {
     background-color: #FFFFFF;
     border-radius: 12px;
-    border: 1px solid #E5E5EA;
+    border: 1px solid #D1D1D6; /* Более темная граница вместо тени */
 }
 
 /* Заголовки */
@@ -57,13 +57,13 @@ QPushButton {
 }
 QPushButton:hover {
     background-color: #F2F2F7;
-    border-color: #C7C7CC;
+    border-color: #8E8E93; /* Затемнение при наведении */
 }
 QPushButton:pressed {
     background-color: #E5E5EA;
 }
 
-/* Акцентная кнопка (Решить) */
+/* Акцентная кнопка */
 QPushButton#PrimaryButton {
     background-color: #007AFF;
     border: 1px solid #007AFF;
@@ -82,10 +82,10 @@ QPushButton#PrimaryButton:pressed {
 /* Таблицы */
 QTableWidget {
     background-color: #FFFFFF;
-    border: 1px solid #E5E5EA;
+    border: 1px solid #D1D1D6;
     border-radius: 8px;
     gridline-color: #F2F2F7;
-    selection-background-color: #E4EFFF; /* Light blue selection */
+    selection-background-color: #E4EFFF;
     selection-color: #007AFF;
 }
 QHeaderView::section {
@@ -126,14 +126,14 @@ QSlider::groove:horizontal {
 QSlider::handle:horizontal {
     background: #FFFFFF;
     border: 1px solid #D1D1D6;
-    width: 18px;
-    height: 18px;
+    width: 20px; /* Чуть больше для удобства */
+    height: 20px;
     margin: -8px 0;
-    border-radius: 9px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-radius: 10px;
 }
 QSlider::handle:horizontal:hover {
     border-color: #007AFF;
+    background: #F2F2F7;
 }
 
 /* ScrollBar */
@@ -151,20 +151,34 @@ QScrollBar::handle:vertical {
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
 }
+
+/* Tabs */
+QTabWidget::pane { 
+    border: 1px solid #D1D1D6; 
+    border-radius: 8px; 
+    background: white; 
+}
+QTabBar::tab { 
+    background: #F2F2F7; 
+    color: #86868B; 
+    padding: 8px 20px; 
+    border-top-left-radius: 6px; 
+    border-top-right-radius: 6px; 
+    margin-right: 2px; 
+}
+QTabBar::tab:selected { 
+    background: #FFFFFF; 
+    color: #007AFF; 
+    font-weight: bold; 
+    border-bottom: 2px solid #007AFF; 
+}
 """
 
 class Card(QFrame):
-    """Виджет-карточка с тенью и белым фоном."""
+    """Виджет-карточка без тени (для производительности)."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setProperty("class", "Card")
-        # Тень
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setXOffset(0)
-        shadow.setYOffset(4)
-        shadow.setColor(QColor(0, 0, 0, 15)) # Очень легкая тень
-        self.setGraphicsEffect(shadow)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -432,8 +446,7 @@ class MainWindow(QMainWindow):
                 tb.setStyleSheet("background-color: transparent; border: none;")
                 self.graph_layout.addWidget(tb)
                 self.graph_layout.addWidget(self.canvas_widget)
-                
-                constrs = gui_utils.plot_constraints(self.canvas_widget, self.constraint_table, opt_vars)
+                constrs = gui_utils.plot_constraints(self.canvas_widget, self.constraint_table, opt_vars, obj_coeffs=obj_coeffs)
                 self.create_sliders(constrs)
 
             # --- 2. Результаты (Табы) ---
@@ -493,12 +506,16 @@ class MainWindow(QMainWindow):
     def fast_solve_event(self):
         if not self.canvas_widget: return
         try:
-            raw_matrix, _, _ = simplex_core.get_simplex_data(self.objective_fxn_table, self.constraint_table)
+            # Получаем obj_coeffs (третий аргумент)
+            raw_matrix, _, obj_coeffs = simplex_core.get_simplex_data(self.objective_fxn_table, self.constraint_table)
+            
             num_vars = self.constraint_table.columnCount() - 2
             op = self.operation_combo.currentText()
             _, _, opt_vars, err, _ = simplex_core.calculate_simplex(raw_matrix, op, num_vars)
+            
             if not err:
-                gui_utils.plot_constraints(self.canvas_widget, self.constraint_table, opt_vars)
+                # ИЗМЕНЕНИЕ ЗДЕСЬ: добавляем obj_coeffs=obj_coeffs
+                gui_utils.plot_constraints(self.canvas_widget, self.constraint_table, opt_vars, obj_coeffs=obj_coeffs)
         except:
             pass
 
@@ -859,14 +876,10 @@ class MainWindow(QMainWindow):
         frame.setStyleSheet("""
             QFrame { 
                 background-color: #FFFFFF; 
-                border: 1px solid #E5E5EA; 
+                border: 1px solid #D1D1D6; 
                 border-radius: 12px; 
             }
         """)
-        # Тень для карточки
-        shadow = QGraphicsDropShadowEffect(frame)
-        shadow.setBlurRadius(15); shadow.setYOffset(4); shadow.setColor(QColor(0,0,0,10))
-        frame.setGraphicsEffect(shadow)
 
         l = QVBoxLayout(frame)
         l.setSpacing(8)
