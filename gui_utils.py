@@ -172,10 +172,17 @@ def plot_constraints(canvas, constraint_table, optimal_vars, obj_coeffs=None):
         ax.spines['bottom'].set_color('#D2D2D7')
         
         ax.legend(fontsize='small', loc='best', frameon=True, edgecolor='#D2D2D7')
-        canvas.draw()
         
+        # Перерисовываем холст только один раз в конце
+        try:
+            canvas.draw()
+        except Exception as e:
+            print(f"Ошибка перерисовки canvas: {e}")
+
         return constraints
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Ошибка отрисовки: {e}")
         return []

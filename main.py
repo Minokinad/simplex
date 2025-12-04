@@ -304,6 +304,14 @@ class MainWindow(QMainWindow):
         self.objective_fxn_table.item(0, 2).setTextAlignment(Qt.AlignCenter)
         
         self.input_layout.addWidget(self.objective_fxn_table)
+        
+        # --- СЛАЙДЕРЫ ДЛЯ ЦЕЛЕВОЙ ФУНКЦИИ ---
+        self.objective_sliders_container = QWidget()
+        self.objective_sliders_layout = QVBoxLayout(self.objective_sliders_container)
+        self.objective_sliders_layout.setContentsMargins(0, 10, 0, 0)
+        self.objective_sliders_container.hide() # Показываем только если 2 переменные
+        self.input_layout.addWidget(self.objective_sliders_container)
+        # ------------------------------------
 
         # Кнопка РЕШИТЬ
         self.solve_btn = QPushButton('Рассчитать оптимальное решение')
@@ -398,11 +406,23 @@ class MainWindow(QMainWindow):
         self.objective_fxn_table.horizontalHeader().setSectionResizeMode(self.objective_fxn_table.columnCount()-1, QHeaderView.Fixed)
         self.objective_fxn_table.horizontalHeader().setSectionResizeMode(self.objective_fxn_table.columnCount()-2, QHeaderView.Fixed)
 
+        # Обновляем слайдеры ЦФ при изменении числа переменных
+        if self.objective_fxn_table.columnCount() - 2 == 2:
+            self.create_objective_sliders()
+        else:
+            self.clear_objective_sliders()
+    
     def del_col_event(self):
         if self.constraint_table.columnCount() > 4: # Min 2 vars + sign + val
             idx = self.constraint_table.columnCount()-3
             self.constraint_table.removeColumn(idx)
             self.objective_fxn_table.removeColumn(idx)
+
+        # Обновляем слайдеры ЦФ при изменении числа переменных
+        if self.objective_fxn_table.columnCount() - 2 == 2:
+            self.create_objective_sliders()
+        else:
+            self.clear_objective_sliders()
 
     # --- Solve Logic ---
     def clear_ui_results(self):
@@ -448,6 +468,9 @@ class MainWindow(QMainWindow):
                 self.graph_layout.addWidget(self.canvas_widget)
                 constrs = gui_utils.plot_constraints(self.canvas_widget, self.constraint_table, opt_vars, obj_coeffs=obj_coeffs)
                 self.create_sliders(constrs)
+                self.create_objective_sliders() # Создаем слайдеры для ЦФ
+            else:
+                self.clear_objective_sliders() # Убираем, если переменных не 2
 
             # --- 2. Результаты (Табы) ---
             res_lbl = QLabel("Результаты решения")
@@ -693,6 +716,65 @@ class MainWindow(QMainWindow):
             self.slider_widgets.append(sl)
             
         self.graph_layout.addWidget(box)
+        
+    def create_objective_sliders(self):
+        self.clear_objective_sliders()
+        self.objective_sliders_container.show()
+        
+        box = QFrame()
+        box.setStyleSheet("background-color: #F9F9F9; border-radius: 8px; padding: 10px;")
+        l = QVBoxLayout(box)
+        
+        head = QLabel("Интерактивное изменение целевой функции (Cj)")
+        head.setStyleSheet("font-weight: bold; color: #555; margin-bottom: 5px;")
+        l.addWidget(head)
+
+        # Получаем текущие значения из таблицы, если они есть
+        c1_item = self.objective_fxn_table.item(0, 0)
+        c2_item = self.objective_fxn_table.item(0, 1)
+        c1_val = float(c1_item.text()) if c1_item and c1_item.text().strip() else 10.0
+        c2_val = float(c2_item.text()) if c2_item and c2_item.text().strip() else 10.0
+        
+        # Слайдер для X1
+        h1 = QHBoxLayout()
+        sl1 = QSlider(Qt.Horizontal)
+        lbl1_val = QLabel(f"{c1_val:.1f}")
+        sl1.setRange(-200, 200); sl1.setValue(int(c1_val * 10))
+        
+        def change_c1(v):
+            real_v = v / 10.0
+            lbl1_val.setText(f"{real_v:.1f}")
+            self.objective_fxn_table.setItem(0, 0, QTableWidgetItem(str(real_v)))
+            self.fast_solve_event()
+        
+        sl1.valueChanged.connect(change_c1)
+        h1.addWidget(QLabel("Коэф. C1 (X1):")); h1.addWidget(sl1); h1.addWidget(lbl1_val)
+        l.addLayout(h1)
+
+        # Слайдер для X2
+        h2 = QHBoxLayout()
+        sl2 = QSlider(Qt.Horizontal)
+        lbl2_val = QLabel(f"{c2_val:.1f}")
+        sl2.setRange(-200, 200); sl2.setValue(int(c2_val * 10))
+
+        def change_c2(v):
+            real_v = v / 10.0
+            lbl2_val.setText(f"{real_v:.1f}")
+            self.objective_fxn_table.setItem(0, 1, QTableWidgetItem(str(real_v)))
+            self.fast_solve_event()
+
+        sl2.valueChanged.connect(change_c2)
+        h2.addWidget(QLabel("Коэф. C2 (X2):")); h2.addWidget(sl2); h2.addWidget(lbl2_val)
+        l.addLayout(h2)
+
+        self.objective_sliders_layout.addWidget(box)
+    
+    def clear_objective_sliders(self):
+        while self.objective_sliders_layout.count():
+            item = self.objective_sliders_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.objective_sliders_container.hide()
     
     def add_iteration_table_to_layout(self, layout, i, data, headers):
         tbl_dict = data['table']
