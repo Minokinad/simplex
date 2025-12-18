@@ -7,11 +7,12 @@ def get_simplex_data(objective_table, constraint_table):
     obj_cols = objective_table.columnCount() - 2
     obj_coeffs = []
     for i in range(obj_cols):
-        text = objective_table.item(0, i).text()
-        obj_coeffs.append(float(text) if text and text.strip() else 0.0)
+        item = objective_table.item(0, i)
+        text = item.text() if item else ""
+        obj_coeffs.append(float(text.replace(',', '.')) if text and text.strip() else 0.0)
     
     # Вставка 0 для Z-колонки
-    obj_row = np.insert(obj_coeffs, 0, 0)
+    obj_row = np.insert(np.array(obj_coeffs), 0, 0) # НЕ инвертируем здесь
     
     # Чтение ограничений
     rows = constraint_table.rowCount()
@@ -22,14 +23,16 @@ def get_simplex_data(objective_table, constraint_table):
     
     for i in range(rows):
         # bi - последняя колонка
-        text_bi = constraint_table.item(i, cols - 1).text()
-        rhs_list.append(float(text_bi) if text_bi and text_bi.strip() else 0.0)
+        item_bi = constraint_table.item(i, cols - 1)
+        text_bi = item_bi.text() if item_bi else ""
+        rhs_list.append(float(text_bi.replace(',', '.')) if text_bi and text_bi.strip() else 0.0)
         
         # Коэффициенты
         row_coeffs = []
         for j in range(cols - 2):
-            text_c = constraint_table.item(i, j).text()
-            row_coeffs.append(float(text_c) if text_c and text_c.strip() else 0.0)
+            item_c = constraint_table.item(i, j)
+            text_c = item_c.text() if item_c else ""
+            row_coeffs.append(float(text_c.replace(',', '.')) if text_c and text_c.strip() else 0.0)
         coeff_matrix.append(row_coeffs)
         
     matrix_body = np.concatenate((np.array(rhs_list).reshape(-1, 1), np.array(coeff_matrix)), axis=1)
@@ -37,9 +40,18 @@ def get_simplex_data(objective_table, constraint_table):
     
     return full_matrix, rhs_list, obj_coeffs
 
-def calculate_simplex(raw_matrix, operation, num_vars):
+def calculate_simplex(raw_matrix, operation, num_vars, constr_signs=None):
     """Основной алгоритм симплекс-метода."""
     try:
+        # --- FIX: Обработка ограничений >= ---
+        # Умножаем строку ограничения на -1, чтобы превратить >= в <=
+        if constr_signs:
+            # raw_matrix[0] это целевая функция, ограничения начинаются с индекса 1
+            for i, sign in enumerate(constr_signs):
+                if sign == u"\u2265":
+                    raw_matrix[i+1] *= -1
+        # --- END FIX ---
+
         tab = np.flip(raw_matrix).tolist()
         rows = len(tab)
         
@@ -61,8 +73,9 @@ def calculate_simplex(raw_matrix, operation, num_vars):
         
         weird = weird[::-1]
         
-        # Инверсия Z для максимизации
-        weird[0] = [-1 * x for x in weird[0]]
+        # Инверсия Z-строки ТОЛЬКО для максимизации
+        if operation == 'Максимизация':
+            weird[0] = [-1 * x for x in weird[0]]
         
         # Имена переменных
         x_vars = [f'X{i+1}' for i in range(num_vars)]

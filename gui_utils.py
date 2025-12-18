@@ -6,6 +6,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon as MplPolygon
 from PyQt5.QtWidgets import QSizePolicy
+from PyQt5.QtCore import Qt
 
 # Настройка стилей Matplotlib под "Clean Design"
 try:
@@ -22,12 +23,57 @@ class MplCanvas(FigureCanvasQTAgg):
         self.axes.set_facecolor('#FFFFFF')
         
         # Более свободные отступы
-        self.fig.subplots_adjust(left=0.08, bottom=0.1, right=0.95, top=0.92)
+        self.fig.subplots_adjust(left=0.12, bottom=0.1, right=0.95, top=0.92)
         
         super(MplCanvas, self).__init__(self.fig)
         self.setParent(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.updateGeometry()
+
+        # --- Panning Logic ---
+        self.setCursor(Qt.OpenHandCursor)
+        self._pan_start_pos = None
+        self._pan_start_xlim = None
+        self._pan_start_ylim = None
+        self.fig.canvas.mpl_connect('button_press_event', self._on_press)
+        self.fig.canvas.mpl_connect('button_release_event', self._on_release)
+        self.fig.canvas.mpl_connect('motion_notify_event', self._on_motion)
+        
+    def _on_press(self, event):
+        # Левая кнопка мыши и в области осей
+        if event.button == 1 and event.inaxes == self.axes:
+            self.setCursor(Qt.ClosedHandCursor)
+            self._pan_start_pos = (event.xdata, event.ydata)
+            self._pan_start_xlim = self.axes.get_xlim()
+            self._pan_start_ylim = self.axes.get_ylim()
+
+    def _on_release(self, event):
+        if event.button == 1:
+            self.setCursor(Qt.OpenHandCursor)
+            self._pan_start_pos = None
+            self._pan_start_xlim = None
+            self._pan_start_ylim = None
+
+    def _on_motion(self, event):
+        if self._pan_start_pos is None or event.inaxes != self.axes or not event.xdata or not event.ydata:
+            return
+        
+        # Текущие координаты
+        cur_pos = (event.xdata, event.ydata)
+        
+        # Разница с начальной точкой
+        dx = cur_pos[0] - self._pan_start_pos[0]
+        dy = cur_pos[1] - self._pan_start_pos[1]
+        
+        # Начальные лимиты
+        xlim = self._pan_start_xlim
+        ylim = self._pan_start_ylim
+        
+        # Сдвигаем лимиты на dx, dy
+        self.axes.set_xlim(xlim[0] - dx, xlim[1] - dx)
+        self.axes.set_ylim(ylim[0] - dy, ylim[1] - dy)
+        
+        self.fig.canvas.draw_idle()
 
 def plot_constraints(canvas, constraint_table, optimal_vars, obj_coeffs=None):
     """Рисует график ограничений, область и линию целевой функции."""
@@ -170,6 +216,11 @@ def plot_constraints(canvas, constraint_table, optimal_vars, obj_coeffs=None):
         ax.spines['right'].set_visible(False)
         ax.spines['left'].set_color('#D2D2D7')
         ax.spines['bottom'].set_color('#D2D2D7')
+        
+        # --- NEW: Axis Labels ---
+        ax.set_xlabel("X1", fontsize=10, weight='bold', color='#3C3C43')
+        ax.set_ylabel("X2", fontsize=10, weight='bold', color='#3C3C43')
+        # --- END NEW ---
         
         ax.legend(fontsize='small', loc='best', frameon=True, edgecolor='#D2D2D7')
         

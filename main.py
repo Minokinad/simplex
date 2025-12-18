@@ -161,7 +161,7 @@ QTabWidget::pane {
 QTabBar::tab { 
     background: #F2F2F7; 
     color: #86868B; 
-    padding: 8px 20px; 
+    padding: 8px 24px; 
     border-top-left-radius: 6px; 
     border-top-right-radius: 6px; 
     margin-right: 2px; 
@@ -214,8 +214,7 @@ class MainWindow(QMainWindow):
         self.main_scroll.setFrameShape(QFrame.NoFrame)
 
         self.container_widget = QWidget()
-        # Основной лейаут
-        self.main_layout = QVBoxLayout(self.container_widget)
+        self.main_layout = QGridLayout(self.container_widget)
         self.main_layout.setSpacing(24) # Больше воздуха между блоками
         self.main_layout.setContentsMargins(30, 30, 30, 30)
 
@@ -226,24 +225,34 @@ class MainWindow(QMainWindow):
         self.input_layout.setContentsMargins(20, 20, 20, 20)
         
         self.create_input_ui()
-        self.main_layout.addWidget(self.input_card)
-
+      
         # 2. Блок Графика (Карточка)
         self.graph_container_card = Card()
         self.graph_layout = QVBoxLayout(self.graph_container_card)
         self.graph_layout.setContentsMargins(20, 20, 20, 20)
         self.graph_container_card.hide() # Скрыт пока нет решения
-        self.main_layout.addWidget(self.graph_container_card)
 
         # 3. Блок Результатов (Карточка)
         self.results_card = Card()
         self.results_layout = QVBoxLayout(self.results_card)
         self.results_layout.setContentsMargins(20, 20, 20, 20)
         self.results_layout.setSpacing(15)
-        self.results_card.hide()
-        self.main_layout.addWidget(self.results_card)
+        
+        # Placeholder
+        placeholder_label = QLabel("Здесь будет решение")
+        placeholder_label.setAlignment(Qt.AlignCenter)
+        placeholder_label.setStyleSheet("color: #86868B; font-size: 16px; font-style: italic;")
+        self.results_layout.addWidget(placeholder_label)
+        
+        # Размещение в сетке
+        self.main_layout.addWidget(self.input_card, 0, 0)
+        self.main_layout.addWidget(self.graph_container_card, 0, 1)
+        self.main_layout.addWidget(self.results_card, 1, 0, 1, 2)
+        
+        self.main_layout.setColumnStretch(0, 1) # Колонка ввода
+        self.main_layout.setColumnStretch(1, 1) # Колонка графика
+        self.main_layout.setRowStretch(1, 1)    # Растягиваем строку с результатами
 
-        self.main_layout.addStretch()
         self.main_scroll.setWidget(self.container_widget)
         self.setCentralWidget(self.main_scroll)
 
@@ -305,12 +314,11 @@ class MainWindow(QMainWindow):
         
         self.input_layout.addWidget(self.objective_fxn_table)
         
-        # --- СЛАЙДЕРЫ ДЛЯ ЦЕЛЕВОЙ ФУНКЦИИ ---
+        # --- СЛАЙДЕРЫ ДЛЯ ЦЕЛЕВОЙ ФУНКЦИИ (инициализация контейнера) ---
         self.objective_sliders_container = QWidget()
         self.objective_sliders_layout = QVBoxLayout(self.objective_sliders_container)
         self.objective_sliders_layout.setContentsMargins(0, 10, 0, 0)
-        self.objective_sliders_container.hide() # Показываем только если 2 переменные
-        self.input_layout.addWidget(self.objective_sliders_container)
+        # Контейнер будет добавлен в graph_layout при решении, если переменных 2.
         # ------------------------------------
 
         # Кнопка РЕШИТЬ
@@ -320,6 +328,10 @@ class MainWindow(QMainWindow):
         self.solve_btn.setFixedHeight(40)
         self.input_layout.addSpacing(10)
         self.input_layout.addWidget(self.solve_btn)
+        
+        # --- NEW: Add stretch to prevent collapsing ---
+        self.input_layout.addStretch()
+        # --- END NEW ---
 
         # Signals
         self.add_row_btn.clicked.connect(self.add_row_event)
@@ -327,6 +339,37 @@ class MainWindow(QMainWindow):
         self.del_row_btn.clicked.connect(self.del_row_event)
         self.del_col_btn.clicked.connect(self.del_col_event)
         self.solve_btn.clicked.connect(self.full_solve_event)
+
+    # --- Zoom Methods ---
+    def zoom_event(self, factor):
+        if not self.canvas_widget: return
+        ax = self.canvas_widget.axes
+        
+        cur_xlim = ax.get_xlim()
+        cur_ylim = ax.get_ylim()
+        
+        x_center = (cur_xlim[0] + cur_xlim[1]) / 2
+        y_center = (cur_ylim[0] + cur_ylim[1]) / 2
+        
+        new_width = (cur_xlim[1] - cur_xlim[0]) * factor
+        new_height = (cur_ylim[1] - cur_ylim[0]) * factor
+        
+        ax.set_xlim([x_center - new_width / 2, x_center + new_width / 2])
+        ax.set_ylim([y_center - new_height / 2, y_center + new_height / 2])
+        
+        self.canvas_widget.draw()
+
+    def zoom_in_event(self):
+        self.zoom_event(0.85) 
+
+    def zoom_out_event(self):
+        self.zoom_event(1.15) 
+
+    def reset_view_event(self):
+        if not self.canvas_widget or not hasattr(self, 'initial_xlim'): return
+        self.canvas_widget.axes.set_xlim(self.initial_xlim)
+        self.canvas_widget.axes.set_ylim(self.initial_ylim)
+        self.canvas_widget.draw()
 
     # --- Table Methods ---
     def create_table(self, rows, cols, signs=None, h_headers=None):
@@ -405,6 +448,8 @@ class MainWindow(QMainWindow):
         self.objective_fxn_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.objective_fxn_table.horizontalHeader().setSectionResizeMode(self.objective_fxn_table.columnCount()-1, QHeaderView.Fixed)
         self.objective_fxn_table.horizontalHeader().setSectionResizeMode(self.objective_fxn_table.columnCount()-2, QHeaderView.Fixed)
+        self.objective_fxn_table.setColumnWidth(self.objective_fxn_table.columnCount()-1, 80)
+        self.objective_fxn_table.setColumnWidth(self.objective_fxn_table.columnCount()-2, 60)
 
         # Обновляем слайдеры ЦФ при изменении числа переменных
         if self.objective_fxn_table.columnCount() - 2 == 2:
@@ -414,9 +459,14 @@ class MainWindow(QMainWindow):
     
     def del_col_event(self):
         if self.constraint_table.columnCount() > 4: # Min 2 vars + sign + val
-            idx = self.constraint_table.columnCount()-3
+            idx = self.constraint_table.columnCount() - 3
             self.constraint_table.removeColumn(idx)
             self.objective_fxn_table.removeColumn(idx)
+            
+            # Повторно создаем и устанавливаем заголовки
+            h = self.create_header_labels(self.constraint_table.columnCount() - 2)
+            self.constraint_table.setHorizontalHeaderLabels(h)
+            self.objective_fxn_table.setHorizontalHeaderLabels(h)
 
         # Обновляем слайдеры ЦФ при изменении числа переменных
         if self.objective_fxn_table.columnCount() - 2 == 2:
@@ -424,24 +474,28 @@ class MainWindow(QMainWindow):
         else:
             self.clear_objective_sliders()
 
-    # --- Solve Logic ---
     def clear_ui_results(self):
+        # Очищаем лейаут результатов (удаляем placeholder или старое решение)
         while self.results_layout.count():
             item = self.results_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
+        
+        # === NEW: Отделяем контейнер слайдеров перед очисткой графика ===
+        if self.objective_sliders_container and self.objective_sliders_container.parent():
+            self.objective_sliders_container.setParent(None)
+        # === END NEW ===
+        
+        # Очищаем лейаут графика
         while self.graph_layout.count():
             item = self.graph_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
         
         self.slider_widgets = []
         self.canvas_widget = None
-        self.results_card.hide()
-        self.graph_container_card.hide()
+        self.graph_container_card.hide() # Скрываем только контейнер графика
 
     def full_solve_event(self):
         try:
-            self.clear_ui_results()
-            
             raw_matrix, rhs, obj_coeffs = simplex_core.get_simplex_data(self.objective_fxn_table, self.constraint_table)
             num_vars = self.constraint_table.columnCount() - 2
             operation = self.operation_combo.currentText()
@@ -449,26 +503,56 @@ class MainWindow(QMainWindow):
             final_z, history, opt_vars, err, headers = simplex_core.calculate_simplex(raw_matrix, operation, num_vars)
             
             if err:
+                # При ошибке просто выходим, не трогая UI, чтобы placeholder остался
                 QMessageBox.warning(self, "Ошибка решения", err)
                 return
 
-            self.results_card.show()
+            # Только при успешном решении очищаем старые данные
+            self.clear_ui_results()
             
             # --- 1. График (если 2 переменные) ---
             if num_vars == 2:
                 self.graph_container_card.show()
+                
+                # --- NEW: Header with zoom controls ---
+                graph_header_layout = QHBoxLayout()
                 lbl = QLabel("Графическая интерпретация")
                 lbl.setProperty("class", "Header")
-                self.graph_layout.addWidget(lbl)
+                graph_header_layout.addWidget(lbl)
+                graph_header_layout.addStretch()
+
+                self.zoom_out_btn = QPushButton("-")
+                self.zoom_in_btn = QPushButton("+")
+                self.reset_view_btn = QPushButton("Сброс")
+                
+                for btn in [self.zoom_out_btn, self.zoom_in_btn]:
+                    btn.setFixedSize(30, 30)
+                    btn.setCursor(Qt.PointingHandCursor)
+                    graph_header_layout.addWidget(btn)
+                
+                self.reset_view_btn.setCursor(Qt.PointingHandCursor)
+                graph_header_layout.addWidget(self.reset_view_btn)
+
+                self.zoom_in_btn.clicked.connect(self.zoom_in_event)
+                self.zoom_out_btn.clicked.connect(self.zoom_out_event)
+                self.reset_view_btn.clicked.connect(self.reset_view_event)
+                
+                self.graph_layout.addLayout(graph_header_layout)
+                # --- END NEW ---
                 
                 self.canvas_widget = gui_utils.MplCanvas(self, width=6, height=5)
-                tb = NavigationToolbar2QT(self.canvas_widget, self)
-                tb.setStyleSheet("background-color: transparent; border: none;")
-                self.graph_layout.addWidget(tb)
                 self.graph_layout.addWidget(self.canvas_widget)
+                
                 constrs = gui_utils.plot_constraints(self.canvas_widget, self.constraint_table, opt_vars, obj_coeffs=obj_coeffs)
+                
+                # --- NEW: Store initial zoom ---
+                self.initial_xlim = self.canvas_widget.axes.get_xlim()
+                self.initial_ylim = self.canvas_widget.axes.get_ylim()
+                # --- END NEW ---
+
                 self.create_sliders(constrs)
                 self.create_objective_sliders() # Создаем слайдеры для ЦФ
+                self.graph_layout.addWidget(self.objective_sliders_container) # ДОБАВЛЯЕМ СЛАЙДЕРЫ СЮДА
             else:
                 self.clear_objective_sliders() # Убираем, если переменных не 2
 
@@ -482,10 +566,11 @@ class MainWindow(QMainWindow):
 
             # Создаем Tabs
             tabs = QTabWidget()
+            tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             tabs.setMinimumHeight(800)
             tabs.setStyleSheet("""
                 QTabWidget::pane { border: 1px solid #E5E5EA; border-radius: 8px; background: white; }
-                QTabBar::tab { background: #F2F2F7; color: #86868B; padding: 8px 20px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }
+                QTabBar::tab { background: #F2F2F7; color: #86868B; padding: 8px 24px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }
                 QTabBar::tab:selected { background: #FFFFFF; color: #007AFF; font-weight: bold; border-bottom: 2px solid #007AFF; }
             """)
             
@@ -493,20 +578,13 @@ class MainWindow(QMainWindow):
             tab_steps = QWidget()
             layout_steps = QVBoxLayout(tab_steps)
             layout_steps.setSpacing(15)
-            
-            # Scroll area внутри таба для шагов, если их много
-            scroll_steps = QScrollArea()
-            scroll_steps.setWidgetResizable(True)
-            scroll_steps.setFrameShape(QFrame.NoFrame)
-            content_steps = QWidget()
-            l_s = QVBoxLayout(content_steps)
-            
+
+            # Итерационные таблицы добавляются напрямую в layout вкладки,
+            # чтобы избежать двойного скроллбара.
             for i, step in enumerate(history):
-                self.add_iteration_table_to_layout(l_s, i, step, headers)
-            l_s.addStretch()
-            
-            scroll_steps.setWidget(content_steps)
-            layout_steps.addWidget(scroll_steps)
+                self.add_iteration_table_to_layout(layout_steps, i, step, headers)
+            layout_steps.addStretch()
+
             tabs.addTab(tab_steps, "Пошаговый расчет")
 
             # --- Вкладка 2: Анализ чувствительности (Красивый) ---
@@ -561,7 +639,7 @@ class MainWindow(QMainWindow):
         table.setAlternatingRowColors(True)
         
         h_l = ["Базис"] + headers
-        if pivot_c is not None: h_l.append("Тета")
+        if pivot_c is not None: h_l.append("Симпл. отношения")
         table.setHorizontalHeaderLabels(h_l)
         
         # Colors
@@ -717,6 +795,31 @@ class MainWindow(QMainWindow):
             
         self.graph_layout.addWidget(box)
         
+    def clear_objective_sliders(self):
+        """Safely clears sliders from the objective function layout."""
+        try:
+            # Проверяем, был ли контейнер удален
+            if not self.objective_sliders_container or not self.objective_sliders_layout:
+                raise RuntimeError("Container was deleted")
+            
+            # Clear all widgets from the layout
+            while self.objective_sliders_layout.count():
+                child = self.objective_sliders_layout.takeAt(0)
+                if child.widget():
+                    child.widget().deleteLater()
+        except RuntimeError:
+            # If container was deleted, recreate it
+            self.objective_sliders_container = QWidget()
+            self.objective_sliders_layout = QVBoxLayout(self.objective_sliders_container)
+            self.objective_sliders_layout.setContentsMargins(0, 10, 0, 0)
+    
+    def update_obj_from_slider(self, value, index, label_widget):
+        """Handles value changes from an objective function slider."""
+        real_value = value / 10.0
+        label_widget.setText(f"{real_value:.1f}")
+        self.objective_fxn_table.setItem(0, index, QTableWidgetItem(str(real_value)))
+        self.fast_solve_event()
+
     def create_objective_sliders(self):
         self.clear_objective_sliders()
         self.objective_sliders_container.show()
@@ -729,59 +832,39 @@ class MainWindow(QMainWindow):
         head.setStyleSheet("font-weight: bold; color: #555; margin-bottom: 5px;")
         l.addWidget(head)
 
-        # Получаем текущие значения из таблицы, если они есть
-        c1_item = self.objective_fxn_table.item(0, 0)
-        c2_item = self.objective_fxn_table.item(0, 1)
-        c1_val = float(c1_item.text()) if c1_item and c1_item.text().strip() else 10.0
-        c2_val = float(c2_item.text()) if c2_item and c2_item.text().strip() else 10.0
+        num_vars = self.objective_fxn_table.columnCount() - 2
         
-        # Слайдер для X1
-        h1 = QHBoxLayout()
-        sl1 = QSlider(Qt.Horizontal)
-        lbl1_val = QLabel(f"{c1_val:.1f}")
-        sl1.setRange(-200, 200); sl1.setValue(int(c1_val * 10))
-        
-        def change_c1(v):
-            real_v = v / 10.0
-            lbl1_val.setText(f"{real_v:.1f}")
-            self.objective_fxn_table.setItem(0, 0, QTableWidgetItem(str(real_v)))
-            self.fast_solve_event()
-        
-        sl1.valueChanged.connect(change_c1)
-        h1.addWidget(QLabel("Коэф. C1 (X1):")); h1.addWidget(sl1); h1.addWidget(lbl1_val)
-        l.addLayout(h1)
-
-        # Слайдер для X2
-        h2 = QHBoxLayout()
-        sl2 = QSlider(Qt.Horizontal)
-        lbl2_val = QLabel(f"{c2_val:.1f}")
-        sl2.setRange(-200, 200); sl2.setValue(int(c2_val * 10))
-
-        def change_c2(v):
-            real_v = v / 10.0
-            lbl2_val.setText(f"{real_v:.1f}")
-            self.objective_fxn_table.setItem(0, 1, QTableWidgetItem(str(real_v)))
-            self.fast_solve_event()
-
-        sl2.valueChanged.connect(change_c2)
-        h2.addWidget(QLabel("Коэф. C2 (X2):")); h2.addWidget(sl2); h2.addWidget(lbl2_val)
-        l.addLayout(h2)
+        for i in range(num_vars):
+            item = self.objective_fxn_table.item(0, i)
+            current_val = float(item.text()) if item and item.text().strip() else 10.0
+            
+            h_layout = QHBoxLayout()
+            slider = QSlider(Qt.Horizontal)
+            slider.setCursor(Qt.PointingHandCursor)
+            val_label = QLabel(f"{current_val:.1f}")
+            val_label.setFixedWidth(65)
+            val_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            
+            slider.setRange(-200, 200)
+            slider.setValue(int(current_val * 10))
+            
+            slider.valueChanged.connect(
+                lambda val, idx=i, label=val_label: self.update_obj_from_slider(val, idx, label)
+            )
+            
+            h_layout.addWidget(QLabel(f"Коэф. C{i+1} (X{i+1}):"))
+            h_layout.addWidget(slider)
+            h_layout.addWidget(val_label)
+            l.addLayout(h_layout)
 
         self.objective_sliders_layout.addWidget(box)
-    
-    def clear_objective_sliders(self):
-        while self.objective_sliders_layout.count():
-            item = self.objective_sliders_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self.objective_sliders_container.hide()
-    
+
     def add_iteration_table_to_layout(self, layout, i, data, headers):
         tbl_dict = data['table']
         pivot_r = data['pivot_row']
         pivot_c = data['pivot_col']
         
-        lbl = QLabel(f"Итерация {i}")
+        lbl = QLabel(f"Итерация {i+1}")
         lbl.setProperty("class", "SubHeader")
         lbl.setStyleSheet("margin-top: 15px; margin-bottom: 5px;")
         layout.addWidget(lbl)
@@ -796,11 +879,12 @@ class MainWindow(QMainWindow):
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         
         # === ВОТ ЗДЕСЬ УВЕЛИЧИВАЕМ ВЫСОТУ СТРОК ===
-        table.verticalHeader().setDefaultSectionSize(50) 
+        table.verticalHeader().setDefaultSectionSize(40) # Сделаем строки чуть ниже
+        table.verticalHeader().setVisible(False)
         # ==========================================
         
         h_l = ["Базис"] + headers
-        if pivot_c is not None: h_l.append("Тета")
+        if pivot_c is not None: h_l.append("Симпл. отношения")
         table.setHorizontalHeaderLabels(h_l)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         
@@ -850,12 +934,12 @@ class MainWindow(QMainWindow):
                 if r_idx == pivot_r: it_th.setBackground(hl_row)
                 table.setItem(r_idx, col_count-1, it_th)
                 
-        table.verticalHeader().setVisible(False)
-        
-        # Пересчитываем высоту таблицы с учетом новых высоких строк
-        h = table.horizontalHeader().height() + (50 * table.rowCount()) + 4
-        table.setMinimumHeight(h)
-        table.setMaximumHeight(h)
+        # --- УБРАЛИ ФИКСИРОВАННУЮ ВЫСОТУ ---
+        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        table.resizeColumnsToContents()
+        table.resizeRowsToContents()
+        # Даем таблице возможность самой рассчитать свою высоту
+        table.setMinimumHeight(table.horizontalHeader().height() + table.rowHeight(0) * table.rowCount())
         
         layout.addWidget(table)
         
