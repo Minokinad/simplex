@@ -222,6 +222,10 @@ def plot_constraints(canvas, constraint_table, optimal_vars, obj_coeffs=None):
         ax.set_ylabel("X2", fontsize=10, weight='bold', color='#3C3C43')
         # --- END NEW ---
         
+        # Добавляем значения X1 и X2 в легенду
+        if optimal_vars:
+            ax.plot([], [], ' ', label=f'X1 = {opt_x:.2f}, X2 = {opt_y:.2f}')
+        
         ax.legend(fontsize='small', loc='best', frameon=True, edgecolor='#D2D2D7')
         
         # Перерисовываем холст только один раз в конце
